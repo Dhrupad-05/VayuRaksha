@@ -1,0 +1,33 @@
+{
+  "insat3d": {
+    "name": "INSAT-3D AOD",
+    "mode": "credentialed",
+    "env": ["MOSDAC_USERNAME", "MOSDAC_PASSWORD"],
+    "fallback": "synthetic_aod"
+  },
+  "tropomi": {
+    "name": "Sentinel-5P TROPOMI HCHO",
+    "mode": "earth_engine",
+    "env": ["GOOGLE_APPLICATION_CREDENTIALS"],
+    "fallback": "synthetic_hcho"
+  },
+  "cpcb": {
+    "name": "CPCB Ground AQI",
+    "mode": "scrape_or_file",
+    "env": ["CPCB_DATA_PATH"],
+    "fallback": "synthetic_ground_truth"
+  },
+  "firms": {
+    "name": "NASA FIRMS Fire Activity",
+    "mode": "api",
+    "env": ["FIRMS_MAP_KEY"],
+    "fallback": "synthetic_fires"
+  },
+  "era5": {
+    "name": "ERA5 Meteorology",
+    "mode": "cdsapi",
+    "env": ["CDSAPI_URL", "CDSAPI_KEY"],
+    "fallback": "synthetic_meteorology"
+  }
+}
+

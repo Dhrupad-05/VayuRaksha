@@ -1,0 +1,21 @@
+{
+  "random_seed": 42,
+  "test_days": 45,
+  "validation_days": 45,
+  "ensemble": {
+    "random_forest_estimators": 260,
+    "extra_trees_estimators": 220,
+    "hist_gradient_boosting_max_iter": 220
+  },
+  "uncertainty": {
+    "quantile_low": 0.1,
+    "quantile_high": 0.9,
+    "minimum_sigma": 5.0
+  },
+  "hotspot": {
+    "hcho_z_threshold": 1.55,
+    "fire_intensity_threshold": 2.2,
+    "min_cluster_points": 2
+  }
+}
+

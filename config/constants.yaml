@@ -1,0 +1,18 @@
+india_bbox:
+  north: 37.6
+  south: 6.5
+  west: 68.1
+  east: 97.4
+grid:
+  resolution_degrees: 0.5
+  demo_resolution_degrees: 1.0
+aqi:
+  min: 0
+  max: 500
+  baseline_r2: 0.85
+  target_r2: 0.88
+hotspot:
+  target_f1: 0.82
+cache:
+  ttl_seconds: 43200
+

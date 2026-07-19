@@ -1,0 +1,10 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      VAYURAKSHA_ARTIFACT_DIR: artifacts/latest
+

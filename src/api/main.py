@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import asyncio
+import copy
+import hashlib
+import json
 import os
+import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Query, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from starlette.responses import Response
@@ -18,6 +22,8 @@ from src.inference.artifacts import read_json_artifact
 ARTIFACT_DIR = Path(os.getenv("VAYURAKSHA_ARTIFACT_DIR", "artifacts/latest"))
 REQUESTS = Counter("vayuraksha_requests_total", "Total VayuRaksha API requests", ["endpoint"])
 LATENCY = Histogram("vayuraksha_endpoint_latency_seconds", "Endpoint latency", ["endpoint"])
+_CACHE: dict[str, tuple[float, str, dict[str, Any]]] = {}
+_CACHE_TTL_SECONDS = 12 * 3600
 
 app = FastAPI(
     title="VayuRaksha API",
@@ -64,6 +70,18 @@ async def aqi_grid() -> dict[str, Any]:
         return _artifact_or_404("predictions.geojson")
 
 
+@app.get("/aqi/timeseries")
+async def aqi_timeseries(region: str = Query("igp"), days: int = Query(30, ge=1, le=90)) -> dict[str, Any]:
+    """Return regional AQI time-series with uncertainty bands."""
+    REQUESTS.labels("aqi_timeseries").inc()
+    payload = _artifact_or_404("timeseries.json")
+    region_key = region.lower()
+    series = payload.get("regions", {}).get(region_key)
+    if series is None:
+        raise HTTPException(status_code=404, detail=f"Unknown region '{region}'.")
+    return {"region": region_key, "series": series[-days:]}
+
+
 @app.get("/hotspots/geojson")
 async def hotspots_geojson(min_severity: str = "minor") -> dict[str, Any]:
     """Return latest HCHO/fire hotspots as GeoJSON."""
@@ -77,6 +95,13 @@ async def hotspots_geojson(min_severity: str = "minor") -> dict[str, Any]:
         if severity_rank.get(feature.get("properties", {}).get("severity", "watch"), 0) >= threshold
     ]
     return payload
+
+
+@app.get("/uncertainty/map")
+async def uncertainty_map() -> dict[str, Any]:
+    """Return uncertainty-focused GeoJSON layer."""
+    REQUESTS.labels("uncertainty_map").inc()
+    return _artifact_or_404("uncertainty.geojson")
 
 
 @app.get("/regions/summary")
@@ -113,7 +138,7 @@ async def websocket_updates(websocket: WebSocket) -> None:
 
 
 def _artifact_or_404(name: str) -> dict[str, Any]:
-    payload = read_json_artifact(name, ARTIFACT_DIR)
+    payload = _cached_json(name)
     if not payload:
         raise HTTPException(
             status_code=404,
@@ -121,3 +146,20 @@ def _artifact_or_404(name: str) -> dict[str, Any]:
         )
     return payload
 
+
+def _cached_json(name: str) -> dict[str, Any]:
+    path = ARTIFACT_DIR / name
+    if not path.exists():
+        return {}
+    now = time.time()
+    checksum = _checksum(path)
+    cached = _CACHE.get(name)
+    if cached and cached[0] > now and cached[1] == checksum:
+        return copy.deepcopy(cached[2])
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    _CACHE[name] = (now + _CACHE_TTL_SECONDS, checksum, payload)
+    return copy.deepcopy(payload)
+
+
+def _checksum(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()

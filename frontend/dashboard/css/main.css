@@ -10,6 +10,14 @@
   --violet: #5d5f9f;
 }
 
+body.dark {
+  --ink: #eef4f2;
+  --muted: #a9b8bd;
+  --line: #29373d;
+  --paper: #12181b;
+  --panel: #182125;
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -24,7 +32,7 @@ body {
 
 .sidebar {
   border-right: 1px solid var(--line);
-  background: #fbfcfb;
+  background: var(--panel);
   padding: 18px;
   overflow-y: auto;
 }
@@ -97,7 +105,7 @@ label {
   justify-content: space-between;
   align-items: center;
   padding: 14px 18px;
-  background: #ffffff;
+  background: var(--panel);
 }
 
 .toolbar h2 { font-size: 18px; }
@@ -110,6 +118,15 @@ button {
   padding: 9px 12px;
   font-weight: 650;
   cursor: pointer;
+}
+
+body.dark button { background: #202b30; color: var(--ink); }
+
+.slider-label {
+  min-width: 220px;
+  display: grid;
+  gap: 4px;
+  color: var(--muted);
 }
 
 .map-shell {
@@ -138,14 +155,14 @@ button {
 
 .analytics {
   display: grid;
-  grid-template-columns: 1.2fr .8fr;
+  grid-template-columns: 1fr 1fr .8fr;
   border-top: 1px solid var(--line);
   min-height: 260px;
 }
 
 .chart-panel {
   min-width: 0;
-  background: #ffffff;
+  background: var(--panel);
   border-right: 1px solid var(--line);
 }
 
@@ -171,4 +188,3 @@ button {
   .workspace { grid-template-rows: auto 520px auto; }
   .analytics { grid-template-columns: 1fr; }
 }
-

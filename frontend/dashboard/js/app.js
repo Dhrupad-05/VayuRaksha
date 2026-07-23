@@ -6,11 +6,10 @@ const fallbackMetrics = {
 
 const state = {
   map: null,
-  aqiLayer: L.layerGroup(),
-  hotspotLayer: L.layerGroup(),
-  uncertaintyLayer: L.layerGroup(),
   predictions: null,
   hotspots: null,
+  uncertainty: null,
+  timeseries: null,
 };
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -20,33 +19,47 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 function initMap() {
-  state.map = L.map("map", { zoomControl: false }).setView([22.8, 80.5], 5);
-  L.control.zoom({ position: "bottomleft" }).addTo(state.map);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 10,
-    attribution: "&copy; OpenStreetMap",
-  }).addTo(state.map);
-  state.aqiLayer.addTo(state.map);
-  state.hotspotLayer.addTo(state.map);
-  state.uncertaintyLayer.addTo(state.map);
+  mapboxgl.accessToken = "";
+  state.map = new mapboxgl.Map({
+    container: "map",
+    center: [80.5, 22.8],
+    zoom: 4.1,
+    style: {
+      version: 8,
+      sources: {
+        osm: {
+          type: "raster",
+          tiles: ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png", "https://b.tile.openstreetmap.org/{z}/{x}/{y}.png"],
+          tileSize: 256,
+          attribution: "OpenStreetMap",
+        },
+      },
+      layers: [{ id: "osm", type: "raster", source: "osm" }],
+    },
+  });
+  state.map.addControl(new mapboxgl.NavigationControl({ visualizePitch: true }), "bottom-left");
   renderLegend();
 }
 
 async function loadAll() {
   setStatus("Synchronizing forecast artifacts...");
   try {
-    const [summary, predictions, hotspots, regions] = await Promise.all([
+    const [summary, predictions, hotspots, regions, uncertainty, timeseries] = await Promise.all([
       VayuApi.getJson("/metrics/summary"),
       VayuApi.getJson("/aqi/grid"),
       VayuApi.getJson("/hotspots/geojson"),
       VayuApi.getJson("/regions/summary"),
+      VayuApi.getJson("/uncertainty/map"),
+      VayuApi.getJson("/aqi/timeseries?region=igp&days=30"),
     ]);
     state.predictions = predictions;
     state.hotspots = hotspots;
+    state.uncertainty = uncertainty;
+    state.timeseries = timeseries;
     renderMetrics(summary);
     renderMap(predictions, hotspots);
     renderRegions(regions);
-    renderCharts(predictions, hotspots);
+    renderCharts(predictions, hotspots, state.timeseries);
     setStatus(`Live API connected at ${VayuApi.API_BASE}`);
   } catch (error) {
     renderMetrics(fallbackMetrics);
@@ -62,39 +75,14 @@ function renderMetrics(summary) {
 }
 
 function renderMap(predictions, hotspots) {
-  state.aqiLayer.clearLayers();
-  state.hotspotLayer.clearLayers();
-  state.uncertaintyLayer.clearLayers();
-
-  predictions.features.forEach((feature) => {
-    const [lon, lat] = feature.geometry.coordinates;
-    const props = feature.properties;
-    L.circleMarker([lat, lon], {
-      radius: 5,
-      weight: 0,
-      fillOpacity: 0.78,
-      fillColor: aqiColor(props.aqi),
-    }).bindPopup(popupHtml(props)).addTo(state.aqiLayer);
-
-    L.circle([lat, lon], {
-      radius: Math.max(15000, props.uncertainty * 1200),
-      color: "#5d5f9f",
-      weight: 1,
-      fillOpacity: 0.03,
-    }).addTo(state.uncertaintyLayer);
-  });
-
-  hotspots.features.forEach((feature) => {
-    const [lon, lat] = feature.geometry.coordinates;
-    const props = feature.properties;
-    L.circleMarker([lat, lon], {
-      radius: props.severity === "critical" ? 11 : 8,
-      color: "#ffffff",
-      weight: 1,
-      fillOpacity: 0.92,
-      fillColor: props.severity === "critical" ? "#c84630" : "#d99a25",
-    }).bindPopup(`<strong>${props.severity}</strong><br>HCHO ${props.hcho}<br>Score ${props.score}`).addTo(state.hotspotLayer);
-  });
+  const ready = () => {
+    addOrUpdateSource("aqi", predictions);
+    addOrUpdateSource("hotspots", hotspots);
+    addOrUpdateSource("uncertainty", state.uncertainty || uncertaintyFromPredictions(predictions));
+    ensureLayers();
+  };
+  if (state.map.loaded()) ready();
+  else state.map.once("load", ready);
 }
 
 function renderRegions(regions) {
@@ -108,13 +96,28 @@ function renderRegions(regions) {
   });
 }
 
-function renderCharts(predictions, hotspots) {
+function renderCharts(predictions, hotspots, timeseries) {
   const aqiValues = predictions.features.map((feature) => feature.properties.aqi);
   const uncertainty = predictions.features.map((feature) => feature.properties.uncertainty);
-  Plotly.newPlot("aqi-chart", [
-    { x: aqiValues, type: "histogram", marker: { color: "#147d7e" }, name: "AQI" },
-    { x: uncertainty, type: "histogram", marker: { color: "#5d5f9f" }, name: "Uncertainty", opacity: 0.55 },
-  ], { margin: { t: 24, r: 16, b: 38, l: 42 }, barmode: "overlay", title: "Forecast Distribution" }, { displayModeBar: false, responsive: true });
+  const series = (timeseries && timeseries.series) || [];
+  Plotly.newPlot("aqi-timeseries", [{
+    x: series.map((row) => row.date),
+    y: series.map((row) => row.aqi_pred),
+    error_y: { array: series.map((row) => row.uncertainty), visible: true, color: "#5d5f9f" },
+    mode: "lines+markers",
+    line: { color: "#147d7e", width: 3 },
+    fill: "tozeroy",
+    name: "AQI forecast",
+  }], { margin: { t: 24, r: 16, b: 38, l: 42 }, title: "IGP Time-Series With Uncertainty" }, { displayModeBar: false, responsive: true });
+
+  Plotly.newPlot("correlation", [{
+    x: predictions.features.map((feature) => feature.properties.fire_intensity),
+    y: predictions.features.map((feature) => feature.properties.hcho),
+    mode: "markers",
+    type: "scatter",
+    marker: { color: aqiValues, colorscale: "YlOrRd", size: 8 },
+    name: "Fire-HCHO",
+  }], { margin: { t: 24, r: 16, b: 38, l: 42 }, title: "Fire-HCHO Correlation" }, { displayModeBar: false, responsive: true });
 
   const severityCounts = {};
   hotspots.features.forEach((feature) => {
@@ -145,18 +148,20 @@ function renderFallback() {
     { type: "Feature", geometry: { type: "Point", coordinates: [75, 30] }, properties: { severity: "critical", hcho: 780, score: 4.2 } },
     { type: "Feature", geometry: { type: "Point", coordinates: [83, 23] }, properties: { severity: "major", hcho: 650, score: 3.1 } },
   ] };
+  state.uncertainty = uncertaintyFromPredictions(predictions);
   renderMap(predictions, hotspots);
   renderRegions({ regions: [
     { region: "Indo-Gangetic Plain", mean_aqi: 174, dominant_category: "Moderate", cells: 42 },
     { region: "Coastal South", mean_aqi: 68, dominant_category: "Satisfactory", cells: 28 },
     { region: "Eastern Belt", mean_aqi: 102, dominant_category: "Moderate", cells: 24 },
   ] });
-  renderCharts(predictions, hotspots);
+  renderCharts(predictions, hotspots, { series: [] });
 }
 
 function bindControls() {
   document.getElementById("refresh-btn").addEventListener("click", loadAll);
-  document.getElementById("export-btn").addEventListener("click", () => {
+  document.getElementById("theme-btn").addEventListener("click", () => document.body.classList.toggle("dark"));
+  document.getElementById("export-geojson-btn").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(state.predictions || {}, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
@@ -165,14 +170,90 @@ function bindControls() {
     anchor.click();
     URL.revokeObjectURL(url);
   });
-  document.getElementById("toggle-aqi").addEventListener("change", (event) => toggleLayer(state.aqiLayer, event.target.checked));
-  document.getElementById("toggle-hotspots").addEventListener("change", (event) => toggleLayer(state.hotspotLayer, event.target.checked));
-  document.getElementById("toggle-uncertainty").addEventListener("change", (event) => toggleLayer(state.uncertaintyLayer, event.target.checked));
+  document.getElementById("export-csv-btn").addEventListener("click", exportCsv);
+  document.getElementById("time-slider").addEventListener("input", (event) => {
+    document.getElementById("time-label").textContent = event.target.value;
+  });
+  ["aqi", "hotspots", "uncertainty", "fires", "wind"].forEach((name) => {
+    document.getElementById(`toggle-${name}`).addEventListener("change", (event) => setLayerVisibility(name, event.target.checked));
+  });
 }
 
-function toggleLayer(layer, enabled) {
-  if (enabled) layer.addTo(state.map);
-  else state.map.removeLayer(layer);
+function addOrUpdateSource(id, data) {
+  if (state.map.getSource(id)) state.map.getSource(id).setData(data);
+  else state.map.addSource(id, { type: "geojson", data });
+}
+
+function ensureLayers() {
+  if (!state.map.getLayer("uncertainty")) {
+    state.map.addLayer({
+      id: "uncertainty",
+      type: "circle",
+      source: "uncertainty",
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["get", "uncertainty"], 5, 5, 35, 28],
+        "circle-color": "#5d5f9f",
+        "circle-opacity": 0.14,
+        "circle-stroke-color": "#5d5f9f",
+        "circle-stroke-width": 1,
+      },
+    });
+  }
+  if (!state.map.getLayer("aqi")) {
+    state.map.addLayer({
+      id: "aqi",
+      type: "circle",
+      source: "aqi",
+      paint: {
+        "circle-radius": 5,
+        "circle-color": ["step", ["get", "aqi"], "#3b9f6b", 51, "#a7b84f", 101, "#d99a25", 201, "#c84630", 301, "#7a2f43"],
+        "circle-opacity": 0.82,
+      },
+    });
+  }
+  if (!state.map.getLayer("fires")) {
+    state.map.addLayer({
+      id: "fires",
+      type: "circle",
+      source: "aqi",
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["get", "fire_intensity"], 0, 1, 6, 13],
+        "circle-color": "#d99a25",
+        "circle-opacity": 0.28,
+      },
+    });
+  }
+  if (!state.map.getLayer("wind")) {
+    state.map.addLayer({
+      id: "wind",
+      type: "circle",
+      source: "aqi",
+      paint: {
+        "circle-radius": 2,
+        "circle-color": "#147d7e",
+        "circle-opacity": 0.38,
+      },
+    });
+  }
+  if (!state.map.getLayer("hotspots")) {
+    state.map.addLayer({
+      id: "hotspots",
+      type: "circle",
+      source: "hotspots",
+      paint: {
+        "circle-radius": ["case", ["==", ["get", "severity"], "critical"], 11, 8],
+        "circle-color": ["case", ["==", ["get", "severity"], "critical"], "#c84630", "#d99a25"],
+        "circle-stroke-color": "#ffffff",
+        "circle-stroke-width": 1,
+        "circle-opacity": 0.92,
+      },
+    });
+  }
+  state.map.on("click", "aqi", (event) => new mapboxgl.Popup().setLngLat(event.lngLat).setHTML(popupHtml(event.features[0].properties)).addTo(state.map));
+}
+
+function setLayerVisibility(name, enabled) {
+  if (state.map.getLayer(name)) state.map.setLayoutProperty(name, "visibility", enabled ? "visible" : "none");
 }
 
 function aqiColor(aqi) {
@@ -191,7 +272,35 @@ function renderLegend() {
   document.getElementById("legend").innerHTML = "Good &lt;50<br>Satisfactory 51-100<br>Moderate 101-200<br>Poor 201-300<br>Very Poor 300+";
 }
 
+function uncertaintyFromPredictions(predictions) {
+  return {
+    type: "FeatureCollection",
+    features: predictions.features.map((feature) => ({
+      type: "Feature",
+      geometry: feature.geometry,
+      properties: {
+        uncertainty: feature.properties.uncertainty,
+        confidence: feature.properties.uncertainty < 10 ? "high" : "medium",
+        coverage_quality: 0.8,
+      },
+    })),
+  };
+}
+
+function exportCsv() {
+  const rows = [["lon", "lat", "aqi", "uncertainty", "category"]];
+  (state.predictions?.features || []).forEach((feature) => {
+    rows.push([...feature.geometry.coordinates, feature.properties.aqi, feature.properties.uncertainty, feature.properties.category]);
+  });
+  const blob = new Blob([rows.map((row) => row.join(",")).join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "vayuraksha_predictions.csv";
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function setStatus(message) {
   document.getElementById("status").textContent = message;
 }
-

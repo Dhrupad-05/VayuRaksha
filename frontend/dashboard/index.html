@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>VayuRaksha Command Center</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.5.1/mapbox-gl.css" rel="stylesheet" />
     <link rel="stylesheet" href="css/main.css" />
   </head>
   <body>
@@ -34,7 +34,9 @@
         <h2>Layer Control</h2>
         <label><input id="toggle-aqi" type="checkbox" checked /> AQI prediction</label>
         <label><input id="toggle-hotspots" type="checkbox" checked /> HCHO hotspots</label>
-        <label><input id="toggle-uncertainty" type="checkbox" checked /> Uncertainty radius</label>
+        <label><input id="toggle-uncertainty" type="checkbox" checked /> Uncertainty regions</label>
+        <label><input id="toggle-fires" type="checkbox" checked /> Fire intensity</label>
+        <label><input id="toggle-wind" type="checkbox" checked /> Wind proxy</label>
       </section>
       <section class="panel">
         <h2>Regional Watch</h2>
@@ -47,9 +49,14 @@
           <h2>India AQI Forecast Grid</h2>
           <p id="status">Loading model artifacts...</p>
         </div>
+        <label class="slider-label" for="time-slider">Day <span id="time-label">latest</span>
+          <input id="time-slider" type="range" min="1" max="30" value="30" aria-label="Time slider" />
+        </label>
         <div class="toolbar-actions">
-          <button id="refresh-btn" type="button">Refresh</button>
-          <button id="export-btn" type="button">Export GeoJSON</button>
+          <button id="theme-btn" type="button" aria-label="Toggle dark mode">Dark</button>
+          <button id="refresh-btn" type="button" aria-label="Refresh artifacts">Refresh</button>
+          <button id="export-geojson-btn" type="button" aria-label="Export GeoJSON">GeoJSON</button>
+          <button id="export-csv-btn" type="button" aria-label="Export CSV">CSV</button>
         </div>
       </header>
       <section class="map-shell">
@@ -57,14 +64,14 @@
         <div id="legend" class="legend"></div>
       </section>
       <section class="analytics">
-        <div class="chart-panel"><div id="aqi-chart"></div></div>
+        <div class="chart-panel"><div id="aqi-timeseries"></div></div>
+        <div class="chart-panel"><div id="correlation"></div></div>
         <div class="chart-panel"><div id="hotspot-chart"></div></div>
       </section>
     </main>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.5.1/mapbox-gl.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <script src="js/api_client.js"></script>
     <script src="js/app.js"></script>
   </body>
 </html>
-

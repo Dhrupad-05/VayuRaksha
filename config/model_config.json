@@ -2,6 +2,18 @@
   "random_seed": 42,
   "test_days": 45,
   "validation_days": 45,
+  "cnn_lstm": {
+    "sequence_length": 30,
+    "spatial_channels": 13,
+    "grid_size": 13,
+    "batch_size": 256,
+    "epochs": 10,
+    "learning_rate": 0.001,
+    "patience": 4,
+    "max_train_sequences": 8000,
+    "max_eval_sequences": 3500,
+    "mc_dropout_samples": 20
+  },
   "ensemble": {
     "random_forest_estimators": 260,
     "extra_trees_estimators": 220,
@@ -18,4 +30,3 @@
     "min_cluster_points": 2
   }
 }
-

@@ -19,4 +19,7 @@ models/*.joblib
 models/*.pt
 models/*.pkl
 frontend/dashboard/.cache/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
 

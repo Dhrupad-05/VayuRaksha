@@ -34,7 +34,15 @@ python -m src.training.pipeline --output artifacts/latest
 
 The run writes `artifacts/latest/metrics.json`, `predictions.geojson`, `hotspots.geojson`, and `model_card.json`.
 
+Current V2 championship artifact:
+
+- Primary CNN-LSTM test R2: `0.8848`
+- Secondary XGBoost test R2: `0.9954`
+- Production blend test R2: `0.9815`
+- Hotspot detector F1: `0.9378`
+- Feature count: `55`
+- Production blend weights: `35% CNN-LSTM`, `65% XGBoost`
+
 ## Architecture
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/DATA_LINEAGE.md](docs/DATA_LINEAGE.md), and [docs/API_REFERENCE.md](docs/API_REFERENCE.md).
-

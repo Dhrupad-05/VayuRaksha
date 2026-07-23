@@ -9,3 +9,9 @@ def test_health_endpoint_responds():
     assert response.status_code == 200
     assert response.json()["status"] == "healthy"
 
+
+def test_required_artifact_endpoints_are_registered():
+    paths = {route.path for route in app.routes}
+    assert "/aqi/timeseries" in paths
+    assert "/uncertainty/map" in paths
+    assert "/prometheus" in paths
